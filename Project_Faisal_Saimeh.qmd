@@ -1,0 +1,675 @@
+---
+title: "Performance Analysis Between CPU and GPU for Machine Learning"
+author: "Faisal Saimeh"
+format: html
+editor: visual
+---
+
+# Introduction
+
+::: {align="justify"}
+In the realm of machine learning, the selection of appropriate hardware plays a pivotal role in attaining peak performance and efficiency. Among the primary computing devices utilized for machine learning tasks, GPUs and CPUs stand out, each showcasing distinct strengths and weaknesses.
+
+Traditionally, CPUs or central processing units have held the preference owing to their versatility and adeptness in multitasking. CPU acts as the computer's brain, executing fundamental instructions such as arithmetic, logic operations, and I/O tasks. On the other hand, a GPU, or graphics processing unit, designed originally for 2D and 3D graphics and specialized in rendering for high-resolution graphics, but these days with the surge in big data and machine learning applications has propelled GPUs into the spotlight, given their capacity to manage extensive datasets and execute parallel computations.
+
+This project aims to delve into the variances between GPU and CPU performance by delving into the specifications of the processors, to determine which company and which processors of CPU or GPU provide superior power for machine learning.
+:::
+
+# About The Dataset
+
+::: {align="justify"}
+This dataset contains 2,185 CPUs and 2,668 GPUs to understand the development trend of CPUs and GPUs and their performance. It encompasses a diverse set of benchmarks and metrics like process size, thermal design power(TDP), die size, number of transistors, and frequency to evaluate the performance of these two types of processors. In addition, the release date and the manufacturer to see the evolution of these processors' performance during these years.
+
+## Important Terminology:
+
+-   **Process Size (nm):** the size of the transistors used in a processor. The size plays a significant role and typically enables a greater number of transistors to be accommodated within the same physical area (Die Area), potentially leading to enhanced performance, decreased power consumption, and reduced production expenses(nm is an acronym for Nano-meter. It is used to measure microscopic objects or devices like transistors found in processors or atomic structures).
+
+-   **Die Size (mm\^2):** In computing, die refers to the piece of silicon of which the processing unit (a GPU or CPU) consists, often called a chip. Die size means the size of the chunk on a silicon wafer that belongs to one chip. Smaller die sizes allow for more transistors to be packed into the same area resulting in higher processing power and also consuming less power. The number and density of transistors packed into the die determine the processor's computational capacity. (mm\^2 is a short form for square millimeters).
+
+-   **TDP(W):** the electrical energy usage of a computer chip operating at its maximum theoretical load, measured in watts (W).
+
+-   **Transistors (million):** are minuscule electronic components, that function as switches governing the flow of electricity within a circuit. Within processor architecture, these transistors serve as the foundational elements for constructing logic gates and memory cells, essential components that constitute a processor.
+
+-   **Freq (MHz):** relates to the clock rate or clock speed at which a processor's clock generator can produce pulses to perform operations within a specified time frame, which is the responsibility of the billions of transistors within the processor to produce these pulses. For instance, a processor operating at a clock speed of 3.2 GHz (3200 MHz) completes 3.2 billion cycles per second.
+:::
+
+# Reading The Dataset
+
+The following code will import the dataset file called "chip_dataset.csv"
+
+```{r}
+data <- read.csv("chip_dataset.csv")
+```
+
+To view all dataset
+
+```{r}
+data_befor = data
+head(data.frame(data_befor))
+```
+
+# Setting up the Libraries
+
+Before we start the analysis, we should first load the essential libraries that we might use.
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(plotly)
+library(ggplot2)
+library(data.table)
+library(grid)
+library(lubridate)
+```
+
+# Data Cleaning and Processing
+
+This stage is considered a fundamental stage in data analysis because when working with a real-world problem, there is no documentation of the data and the dataset is messy. To improve the quality of the data and to make it more suitable for analysis we have to clean the data by identifying and correcting or removing errors, inconsistencies, and missing values from a dataset and then preprocessing to transform and prepare the data for visualization.
+
+## Explore the Data:
+
+Using the summary function to get overall summary of the dataset. It will return mean, median,25th and 75th quartiles,min and max.
+
+```{r}
+data.frame(summary(data))
+```
+
+## Check and Handling Missing Values,Drop and Rename Columns :
+
+```{r}
+# To calculate the number of missing values in every column.
+data.frame(colSums(is.na(data)))
+```
+
+Two ways to handle the missing values drop rows with missing values or replace them with the mean or mode.
+
+### Drop Columns :
+
+The columns FP16, FP32, and FP64 GFLOPS have too many missing values especially if they do have not any value to CPU only for GPU which is significant for comparing them, and for the Foundry column, also has many missing values as well, and since we have a Vendor column which is kind of the same info present it for us to use. finally, dropping column X because it does not add any value to our data.
+
+```{r}
+data <- select(data, -X,-Foundry,-FP16.GFLOPS,-FP32.GFLOPS,-FP64.GFLOPS)
+head(data)
+```
+
+### Rename Columns :
+
+We need to rename the columns to make it easier and more clear when calling them.
+
+```{r}
+colnames(data) <- c("Product","Type", "Release Date", "Process Size (nm)", "TDP (W)", "Die Size (mm^2)", "Transistors (million)", "Frequency (GHz)", "Company")
+```
+
+```{r}
+head(data)
+```
+
+In this step, renaming the unit name of the frequency from megahertz to gigahertz because we are dealing with frequencies of modern processors. In the next step, we will change the unit from megahertz to gigahertz.
+
+```{r}
+# Changing from Mega to Giga / 1 GHZ = 1000 MHZ
+data$`Frequency (GHz)` <- round(data$`Frequency (GHz)` / 1000,1)
+```
+
+### Handling the Missing Values :
+
+```{r}
+# To calculate the number of missing values in every column agian.
+data.frame(colSums(is.na(data)))
+```
+
+Since the total missing is around 30% so we have to use the replacing missing values. To use this method missing data should be numeric or categorical value data for replacing them with the mean or mode.
+
+I have decided to proceed with the mean solution to replace the missing values. To fill the missing values by mean, I had to take the average separately for each of these columns (TDP (W), Die Size (mm\^2), Transistors (million)) grouped by type of processor (CPU, GPU) to make it more accurate.
+
+**TDP (W)**
+
+```{r}
+# Take the average of TDP (W) grouped by Type and put it in a variable.
+TDP_AVG = data %>% group_by(Type) %>% summarise(avg_tdp = mean(`TDP (W)`, na.rm = TRUE))
+TDP_AVG
+```
+
+```{r}
+# Create variable to take the CPU (TDP (W)) average only.
+cpu_tdp = TDP_AVG %>% filter(Type == "CPU") %>% pull
+cpu_tdp
+```
+
+```{r}
+# Create variable to take the GPU (TDP (W)) average only.
+gpu_tdp = TDP_AVG %>% filter(Type == "GPU") %>% pull
+gpu_tdp
+```
+
+```{r}
+# Replace missing values with the group mean (TDP (W)) of each type of processor.
+data = data %>% mutate(`TDP (W)` = ifelse(is.na(`TDP (W)`) & Type =='CPU', cpu_tdp, ifelse(is.na(`TDP (W)`) & Type =='GPU', gpu_tdp , `TDP (W)`)))
+```
+
+```{r}
+# Check the missing value for the column TDP (W) again.
+data.frame(colSums(is.na(data)))
+```
+
+**Die Size (mm\^2)**
+
+```{r}
+# Take the average of Die Size (mm^2) grouped by Type and put it in a variable.
+Die_AVG = data %>% group_by(Type) %>% summarise(avg_die = mean(`Die Size (mm^2)`, na.rm = TRUE)) 
+Die_AVG
+```
+
+```{r}
+# Create variable to take the CPU (Die Size (mm^2)) average only.
+cpu_die = Die_AVG %>% filter(Type == "CPU") %>% pull 
+cpu_die
+```
+
+```{r}
+# Create variable to take the GPU Die Size (mm^2) average only.
+gpu_die = Die_AVG %>% filter(Type == "GPU") %>% pull 
+gpu_die
+```
+
+```{r}
+# Replace missing values with the group mean (Die Size (mm^2)) of each type of processor
+data = data %>% mutate(`Die Size (mm^2)` = ifelse(is.na(`Die Size (mm^2)`) & Type =='CPU', cpu_die,ifelse(is.na(`Die Size (mm^2)`) & Type =='GPU', gpu_die , `Die Size (mm^2)`)))
+```
+
+```{r}
+# Check the missing value for the column Die Size (mm^2) again 
+data.frame(colSums(is.na(data)))
+```
+
+**Transistors (million)**
+
+```{r}
+# Take the average of Transistors (million) grouped by Type and put it in a variable.
+TS_AVG = data %>% group_by(Type) %>% summarise(avg_ts = mean(`Transistors (million)`, na.rm = TRUE)) 
+TS_AVG
+```
+
+```{r}
+# Create variable to take the CPU (Transistors (million)) average only.
+cpu_ts = TS_AVG %>% filter(Type == "CPU") %>% pull 
+cpu_ts
+```
+
+```{r}
+# Create variable to take the GPU (Transistors (million)) average only.
+gpu_ts = TS_AVG %>% filter(Type == "GPU") %>% pull 
+gpu_ts
+```
+
+```{r}
+# Replace missing values with the group mean (Transistors (million)) of each type of processor
+data = data %>% mutate(`Transistors (million)` = ifelse(is.na(`Transistors (million)`) & Type =='CPU', cpu_ts, ifelse(is.na(`Transistors (million)`) & Type =='GPU', gpu_ts , `Transistors (million)`)))
+```
+
+```{r}
+# Check the missing value for the column Transistors (million) again 
+data.frame(colSums(is.na(data)))
+```
+
+**Delete Rows**
+
+The remaining nine missing values are too small to affect the data, so the best way to handle them is by dropping these rows by the drop_na function.
+
+```{r}
+data <- data %>% drop_na()
+```
+
+The last check on missing values in the data set:
+
+```{r}
+data.frame(colSums(is.na(data)))
+```
+
+### Check Dataset Format :
+
+We need check the dataset format before proceeding to Data Visualization and Analysis.
+
+```{r}
+str(data)
+```
+
+All the columns are in suitable format except the Release Date column formatted as a character, formatting it to date using as.Date function is to make it easier when we look for trends over time.
+
+```{r}
+data <- data %>% mutate(`Release Date` = as.Date(`Release Date`,format = c("%m/%d/%Y")))
+```
+
+```{r}
+# Check again all the formats
+str(data)
+```
+
+```{r}
+# Check NA 
+data.frame(colSums(is.na(data)))
+```
+
+After formatting the date, we explore more NA values in the date column, and because the number is too small to affect, we will drop these rows.
+
+```{r}
+data <- data %>% drop_na()
+```
+
+Finally, we need to check if there are any zero values in our dataset.
+
+```{r}
+data.frame(colSums(data==0))
+```
+
+```{r}
+# Viewing the product that has zero processor
+subset(data,data$`Process Size (nm)` == 0)
+```
+
+There is something wrong with these products information, they have the same values in all columns even though they are different products. The optimal solution is to drop these rows.
+
+```{r}
+data <- subset(data, data$`Process Size (nm)` !=0)
+```
+
+### Add Column :
+
+The last step in Data Cleaning and Processing is to creating new column called Transistor Density to calculate the number of transistors per square millimeter on a chip.
+
+```{r}
+data['Transistor Density']<- round((data['Transistors (million)'] * 1000000) / data['Die Size (mm^2)'], 2)
+
+```
+
+```{r}
+# Viewing the data after Data Cleaning and Processing
+data_after = data
+head(data.frame(data_after))
+```
+
+# Data Visualization and Analysis
+
+Data visualization is the graphical representation of a dataset in a pictorial format. It is a way to see and understand trends, patterns in data, and outliers. Data visualization is essential to the Analysis for discovering useful information and making findings.
+
+## **Count Types of Processors**
+
+```{r}
+data_for_plot =  data %>% count(Type,name="Count")
+```
+
+```{r}
+legend_labels <- paste(names(data_for_plot$Count),data_for_plot$Type ,": ", data_for_plot$Count)
+legend_labels
+```
+
+### **Total Processors Count**
+
+```{r}
+custom_colors <- c("#ffa500", "#0a75ad")
+plot_ly(data_for_plot, labels = ~Type, values = ~Count, type = 'pie',textinfo = 'label+percent', insidetextorientation = 'radial',marker = list(colors = custom_colors)) %>%  layout(title = list(text = "CPU vs GPU Count Unit", x = 0.5,y = 0.98))
+```
+
+::: {align="justify"}
+In this graph, we can see in the provided bar graph that we slightly have more GPUs than CPUs that we'll deal with. We can say that we have a pretty balanced amount of data for both processing units, in which GPUs have 2580 units and CPUs have 2189 units.
+:::
+
+## **The Development of CPUs and GPUs Over Years**
+
+### **Average Process Size**
+
+```{r}
+result <- data %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `Process Size (nm)`, Type) %>%
+  group_by(Year, Type) %>%
+  summarize(mean_count = mean(`Process Size (nm)`))
+```
+
+```{r}
+ggplot(result, aes(x =Year, y = mean_count, color = Type)) +
+  geom_point() +
+  geom_line()+
+  scale_color_manual(values = c("#0a75ad","#ff4040")) +
+  scale_x_continuous(
+  breaks=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020),labels=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020))+
+  scale_y_continuous(
+  breaks=c(20,40,60,80,100,120,140,160,180,200),labels=c(20,40,60,80,100,120,140,160,180,200))+
+  labs(title = " Average Process Size (nm) Over Years", x = "Release Date", y = "Process Size (nm)")+
+  theme(plot.title = element_text(hjust = 0.6))
+```
+
+::: {align="justify"}
+The Process Size for CPU and GPU evolved similarly with no significant distinction between the two. When we get a closer look at the decade (2000-2010) witness tremendous development compared to the period that followed 2010. However, the overall trend is on consistent decrease in Process Size over time. That is a sign of the integration of more advanced technologies, enabling to achievement of smaller Process Sizes to enhance performance.
+:::
+
+### **Average Transistors**
+
+```{r}
+result2 <- data %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `Transistors (million)`, Type) %>%
+  group_by(Year, Type) %>%
+  summarize(mean_count = mean(`Transistors (million)`))
+```
+
+```{r}
+ggplot(result2, aes(x =Year, y = mean_count, color = Type)) +
+  geom_point() +
+  geom_line()+
+  scale_color_manual(values = c("#0a75ad","#ff4040")) +
+  scale_x_continuous(
+  breaks=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020),labels=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020))+
+  scale_y_continuous(
+  breaks=c(1000,2500,5000,7500,10000,12500,15000,17000),labels=c(1000,2500,5000,7500,10000,12500,15000,17000))+
+  labs(title = " Average Transistors (million) Over Years", x = "Release Date", y = "Transistors (million)")+
+  theme(plot.title = element_text(hjust = 0.6))
+```
+
+::: {align="justify"}
+For the number of Transistors able to be fit in the processors, we can observe an upward trend indicating for both CPU and GPU from 2008 to 2018, then we have an observable decline in the period between 2018 and 2019 for CPUs and then a slight increase, unlike GPUs have a slight decrease but in 2016 had a massive increase for Transistors numbers. The reason GPUs have more transistors than CPUs, they are hugely different in architecture. CPU is designed with very few cores, but very powerful cores that are extremely complex and can handle all sorts of tasks and complex processes. A GPU is basically designed for parallel computing, to handle parallel processing tasks efficiently, particularly for graphics rendering and parallelizable computing workloads such as hose found in machine learning, and that's the reason why GPU is more powerful in machine learning. And despite that, GPUs have thousands of cores but they are much less powerful than those on a CPU.
+:::
+
+### **Average Frequency**
+
+```{r}
+result3 <- data %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `Frequency (GHz)`, Type) %>%
+  group_by(Year, Type) %>%
+  summarize(mean_count = mean(`Frequency (GHz)`))
+```
+
+```{r}
+ggplot(result3, aes(x =Year, y = mean_count, color = Type)) +
+  geom_point() +
+  geom_line()+
+  scale_color_manual(values = c("#0a75ad","#ff4040")) +
+  scale_x_continuous(
+  breaks=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020),labels=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020))+
+  labs(title = " Average Frequency (GHz) Over Years", x = "Release Date", y = "Frequency (GHz)")+
+  theme(plot.title = element_text(hjust = 0.6))
+```
+
+::: {align="justify"}
+Looking at this graph for the Frequencies, we can see the big difference in performance between CPUs compared to GPUs with clear superiority CPUs over GPUs. However, both Processing unit seems to have had good development over the years, but the GPUs' improvement is more consistent than the CPUs. Perhaps on this level, GPUs will outperform CPUs in the future in Frequencies.
+:::
+
+### **Average Die Size**
+
+```{r}
+result4 <- data %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `Die Size (mm^2)`, Type) %>%
+  group_by(Year, Type) %>%
+  summarize(mean_count = mean(`Die Size (mm^2)`))
+```
+
+```{r}
+ggplot(result4, aes(x =Year, y = mean_count, color = Type)) +
+  geom_point() +
+  geom_line()+
+  scale_color_manual(values = c("#0a75ad","#ff4040")) +
+  scale_x_continuous(
+  breaks=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020),labels=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020))+
+  scale_y_continuous(
+  breaks=c(100,150,200,250,300,350,400),labels=c(100,150,200,250,300,350,400))+
+  labs(title = " Average Die Size (mm^2) Over Years", x = "Release Date", y = "Die Size (mm^2)") +
+  theme(plot.title = element_text(hjust = 0.6))
+```
+
+::: {align="justify"}
+This chart shows us an upward trend in the size of the Die for both CPU and GPU, unless in 2008 there was a decrease in size for the Die Size for CPU, but then returned to an upward trend with the GPU. The big change started in 2015 when each type took its own curve. The Die Size for the GPU started increasing, unlike the Die Size for the CPU, when started to decrease. GPU takes the opposite path of what we said before, that smaller Die Sizes allow for more Transistors resulting in higher processing power also consuming less power. There is another factor number and density of Transistors packed into the Die determine the processor's computational capacity.
+:::
+
+### **Average TDP**
+
+```{r}
+result5 <- data %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `TDP (W)`, Type) %>%
+  group_by(Year, Type) %>%
+  summarize(mean_count = mean(`TDP (W)`))
+
+```
+
+```{r}
+ggplot(result5, aes(x =Year, y = mean_count, color = Type)) +
+  geom_point() +
+  geom_line()+
+  scale_color_manual(values = c("#0a75ad","#ff4040")) +
+  scale_x_continuous(
+  breaks=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020),labels=c(2000,2002,2004,2006,2008,2010,2012,2014,2016,2018,2020))+
+  scale_y_continuous(
+  breaks=c(30,60,90,120,150,170),labels=c(30,60,90,120,150,170))+
+  labs(title = " Average TDP (W) Over Years", x = "Release Date", y = "TDP (W)")+
+  theme(plot.title = element_text(hjust = 0.6))
+```
+
+::: {align="justify"}
+The TDP(W) started to increase slightly for both CPU and GPU, but after 2006, the gap between them has become large. GPU increased in TDP, but on the other hand the TDP of CPUs decreased until 2009, then started to increase to reach the GPU again in 2016. The huge jump happened in 2021 when the CPU became higher than the GPU. The TDP numbers are affected by several factors, but the most important are the Die Size and the Transistor performance measured by Frequency.
+:::
+
+### **Average Transistor Density with Frequency and TDP**
+
+```{r}
+result6 <- data %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `Transistor Density`, Type, `TDP (W)`, `Frequency (GHz)`) %>%
+  group_by(Year, Type) %>%
+  summarize(
+    mean_transistor_density = mean(`Transistor Density`),
+    mean_TDP_W = mean(`TDP (W)`),
+    mean_frequency_GHz = mean(`Frequency (GHz)`)
+  )
+
+```
+
+```{r fig.width=11, fig.height=6.5}
+ggplot(result6, aes(x = Year, y = mean_transistor_density/1000000, color = mean_TDP_W, size = mean_frequency_GHz)) +
+  geom_point(alpha = 0.7) +
+  facet_wrap(~Type) +
+  scale_color_gradient(low = "blue", high = "red", guide = guide_legend(override.aes = list(size = 4))) +  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Average Transistor Density, Frequency (GHz) and TDP (W) Over Time by Type",
+       x = "Year", 
+       y = "Average Transistor Density (million)",
+       color = "Average TDP (W)", 
+       size = "Average Frequency (GHz)") +
+  guides(size = guide_legend("Average Frequency (GHz)")) +
+  theme_gray() + 
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 14), 
+        legend.title = element_text(size = 16))+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+::: {align="justify"}
+As we can see, the Transistor Density can affect Frequency, TDP (W), or both. Over the years these two processors have evolved to generate the best performance with the best power consumption. Often one feature is developed over another. For example, we see some pieces developed in terms of power at the expense of energy consumption and vice versa. Some products evolved in both energy and performance but did not reach the peak of the products that evolved from one side, but I believe they are the best option as they give everything balanced in terms of performance and energy consumption. We also notice a clear superiority of the CPU over the GPU in terms of performance and energy consumption in general. In recent years, there has been a convergence between processors, and in particular, the GPU is developing steadily so that it is approaching the CPU and may pass it in the future.
+:::
+
+### **Average Transistor Density with Frequency and TDP (2.2 & 2.3 GHz)**
+
+```{r}
+result7 <- data %>%
+  filter(`Frequency (GHz)` == 2.3 | `Frequency (GHz)` == 2.2) %>%
+  count(Year = as.numeric(format(`Release Date`, '%Y')), `Transistor Density`, Type, `TDP (W)`, `Frequency (GHz)`) %>%
+  group_by(Year, Type) %>%
+  summarize(
+    mean_transistor_density = mean(`Transistor Density`),
+    mean_TDP_W = mean(`TDP (W)`),
+    mean_frequency_GHz = mean(`Frequency (GHz)`)
+  )
+
+```
+
+```{r fig.width=11, fig.height=6.5}
+ggplot(result7, aes(x = Year, y = mean_transistor_density/1000000, color = mean_TDP_W, size = mean_frequency_GHz)) +
+  geom_point(alpha = 0.7) +
+  facet_wrap(~Type) +
+  scale_color_gradient(low = "blue", high = "red", guide = guide_legend(override.aes = list(size = 5))) +  
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(title = "Average Transistor Density, Frequency (GHz) and TDP (W) Over Time by Type",
+       x = "Year", 
+       y = "Average Transistor Density (million)",
+       color = "Average TDP (W)", 
+       size = "Average Frequency (GHz)") +
+  guides(size = guide_legend("Average Frequency (GHz)")) +
+  theme_gray() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 10), 
+        legend.title = element_text(size = 16))+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+::: {align="justify"}
+This graph shows only average frequencies of 2.2 and 2.3 GHz to clarify how GPU evolved and kind of reached the CPU performance and power consumption through these years, yes still CPU taking over in general but it is considered a huge jump for the GPU.
+
+**Note:**
+
+I chose only these two numbers because it is the highest number that GPU has reached in this period compared with CPU reached higher than but to compare these two processors and to follow the evolution of GPU compared to CPU.
+:::
+
+## **Comparison Between Companies Over Years**
+
+### **Processors Count between Companies**
+
+```{r}
+data_for_plot2 =  data %>% count(Type,Company,name="Count")
+ggplot(data_for_plot2,aes(x=Company, y=Count,fill= Type),fill = Type) + 
+  geom_text(aes(label = Count),position = position_dodge(1), vjust = -0.5, size = 3) +
+  geom_bar(position='dodge', stat="identity") +
+  scale_y_continuous(
+  breaks=c(500,1000,1500),labels=c(500,1000,1500)) +
+  scale_fill_manual(values=c("#ffa500", "#0a75ad"),labels = legend_labels)+
+  labs(title = "CPU and GPU Count between Companies") +
+  theme_classic() +
+  theme(legend.position = "right", plot.title = element_text(hjust = 1))
+```
+
+::: {align="justify"}
+This graph shows us the numbers of CPU and GPU between companies. As we can see, there are two companies (AMD, Intel) manufacturing CPU and GPU, the others manufacturing only GPU. After looking at this graph, we see Intel and Nvidia taking the lead in making processors, Intel in CPU, and Nvidia in GPU, and there is AMD which I consider also a competitor for these companies because it comes as number two after Intel in CPU manufacturing and number two after NVIDIA in GPU manufacturing.
+:::
+
+### **Distribution of Product Types by Company**
+
+```{r}
+data$Year <- year(ymd(data$`Release Date`))
+
+visualization_data1 <- data %>%
+  group_by(Year, Company, Type) %>%
+  summarize(Count = n(), .groups = 'drop')
+
+my_colors1 <- c("AMD" = "#ff4d00", "ATI" = "#e10000", "Intel" = "#1f77b4","NVIDIA"="#2ca02c" ,"Other"="#660066")
+
+ggplot(visualization_data1, aes(x = Year, y = Count, fill = Company)) +
+  geom_area() +
+  facet_wrap(~Type)+
+  scale_fill_manual(values = my_colors1) +
+  labs(title = "Distribution of Product Types by Company Over the Years",
+       x = "Year", y = "Number of Products Released") +
+  theme_minimal() + theme_gray()+ theme(plot.title = element_text(hjust = 1))
+```
+
+::: {align="justify"}
+In this graph, we delve deeper into analyzing companies over the years on several productions released. As we can see in the GPU graph three companies still produce processors Intel, Nvidia, and AMD which entered the field of GPU in 2006, unlike ATI and other companies that stop producing. Nvidia and AMD are sweeping the market with graphics card products. As for Intel, its numbers are very modest compared to the two companies, but it is continuing to manufacture. In the CPU graph, we have only two companies Intel and AMD with simple superiority for Intel. As we see in the period between 2016 and 2017, we notice a clear decline for the two companies. After research, the reasons for the decline were revealed:
+
+-   Intel faced a significant delay in transitioning to its 10 nm CPU production, originally scheduled for the second half of 2016 but postponed to 2019. This delay was due to yield issues and challenges with multi-patterning, a semiconductor fabrication technique. As a result of these difficulties, which marked one of the hardest transitions in Intel's history, the company had to extend its reliance on the older 14 nm process technology for a longer duration than initially planned.
+
+-   On the other hand, AMD faced in the fourth quarter of 2016, experienced an operating loss mainly due to increased stock-based compensation charges. During this time, AMD was actively developing and announcing new CPU and GPU technologies, particularly their "Zen"-based processors like Ryzen and products using the Vega GPU architecture. They also engaged in significant collaborations and initiatives, including partnering with Google for Radeon GPU technology and launching the Radeon Instinct initiative for deep learning and high-performance computing. Despite these developments and expansions into new areas, AMD faced financial challenges in the market at this time.
+:::
+
+### **Average Frequency (GHz) by Company**
+
+```{r}
+filtered_data <- data %>%
+  filter(Company %in% c("Intel", "NVIDIA", "AMD"))
+
+visualization_data2 <- filtered_data %>%
+  group_by(Year, Company,Type) %>%
+  summarize(AvgFrequency = mean(`Frequency (GHz)`, na.rm = TRUE), .groups = 'drop')
+
+my_colors2 <- c("AMD" = "#ff4d00","Intel" = "#1f77b4","NVIDIA"="#2ca02c")
+
+ggplot(visualization_data2, aes(x = Year, y = AvgFrequency, color = Company)) +
+  geom_line() +
+  geom_point() +
+  scale_color_manual(values = my_colors2)+
+  facet_wrap(~Type)+
+  labs(title = "Average Frequency (GHz) Over the Years by Company",
+       x = "Year", y = "Average Frequency (GHz)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")+theme_gray() +theme(plot.title = element_text(hjust = 1)) 
+```
+
+::: {align="justify"}
+**CPU Trends:**
+
+Both AMD and Intel have been fluctuating in terms of average CPU frequency over the years. AMD's frequency started below Intel's, surpassed it around 2005, then saw a decline and fluctuated afterwards with an increasing trend up until the last data point. Intel's frequency increased until about 2005, declined sharply, and then fluctuated with what seems to be a slight downward trend towards the end of the period.
+
+**GPU Trends:**
+
+NVIDIA shows a consistent increase in GPU frequency from 2000 until around 2015, after which it fluctuates but appears to have an overall slight upward trend. AMD's GPU data starts around 2006, significantly later than Intel and NVIDIA. Although it is has entered the GPU market later, it beats Intel GPU and considered strong competitor for NVIDIA. Intel's frequency shows an increasing trend but remains below that of NVIDIA and AMD.
+:::
+
+### **Average Transistor Density by Company**
+
+```{r}
+visualization_data3 <- filtered_data %>%
+  group_by(Year, Company,Type) %>%
+  summarize(AvgTransistorDensity = mean(`Transistor Density`/1000000, na.rm = TRUE), .groups = 'drop')
+
+ggplot(visualization_data3, aes(x = Year, y = AvgTransistorDensity, color = Company)) +
+  geom_line() +
+  geom_point()+
+  scale_color_manual(values = my_colors2)+
+  facet_wrap(~Type)+
+  labs(title = "Average Transistor Density Over the Years by Company",
+       x = "Year", y = "Average Transistor Density (million)") +
+  theme_minimal() +
+  theme(legend.position = "bottom") + theme_gray() + theme(plot.title = element_text(hjust = 1))
+```
+
+::: {align="justify"}
+**CPU Trends:**
+
+-   AMD: There are significant fluctuations in AMD's transistor density for CPUs. It peaked twice, the first time around 2005, and the trend appears to be steadily increasing, the second peak was sharply around 2019 then dropped in the next years.
+
+-   Intel: Intel's curve is somewhat smoother than AMD's, with a gradual increase over time. There is a noticeable jump around 2016, then a big dip in the next year. However, the overall trend is upward, showing a consistent improvement in transistor density.
+
+**GPU Trends:**
+
+-   AMD: leads the GPU transistor density race, starting higher than NVIDIA and after time crossing Intel and maintaining its lead throughout the years. The curve for AMD shows a very steep increase starting from around 2015, indicating a rapid improvement in their GPU transistor density. Around 2015, AMD's density surpassed Intel's and closely approached NVIDIA's, indicating significant progress in this period. In 2020 AMD passed NVIDIA.
+
+-   Intel: The trend line for Intel shows a consistent but in the period from 2007 to 2013 there were significant fluctuations in Intel's transistor density, then the trend appears to be steadily increasing, but still less than AMD and NVIDIA.
+
+-   NVIDIA: The trend for NVIDIA GPU transistor density starts lower than Intel's but sees a steady increase over time and beats Intel. The direct competitor for NVIDIA is AMD, but AMD has outperformed.
+:::
+
+# Insights and Conclusion
+
+::: {align="justify"}
+After thorough extensive and insightful exploration data analysis with the CPU and GPU products plus the competitor companies' dataset, we have now concluded our exploration. We have discovered various concepts and observations that are interesting, and we'll summarize what we have learned about our dataset.
+
+In our initial analysis, we can recognize that the CPU beat the GPU in process size, frequency, die size, and TDP unlike the GPU beat the CPU in the number of transistors and of course transistor density. This means that the CPU is more powerful and more developed in general than the GPU but that does not it can beat it in every field, in our project we focused on which of these processors is more powerful for machine learning, and in this case, the GPU is the winner. As we mentioned before GPUs have more transistors than CPUs due to their different architectures. CPUs have fewer but more powerful and complex cores, capable of handling a wide range of tasks and complex processes. In contrast, GPUs are designed for parallel computing, making them highly efficient for tasks like graphics rendering and machine learning workloads, which require processing large amounts of data simultaneously. This focus on parallel processing is why GPUs are more powerful for machine learning applications. We also got to know that some GPUs reached the frequency of the CPUs from 2020 which gives an indication maybe in the future the GPU is going to beat the CPU frequency, of course, will not be dispensed of the CPU but the GPU will be used in more fields than machine learning.
+
+Then analyzing processors between companies, we got that there are three giant companies compete each other and they are Intel, NVIDIA, and AMD. The two companies Intel and AMD compete on both types of processors despite the superiority of Intel in CPU over AMD but in GPU her presence is very weak compared to AMD which is facing NVIDIA which is considered the direct competitor in GPU.
+
+Lastly, the trends in CPU and GPU frequencies and transistor densities of AMD, Intel, and NVIDIA over time. AMD initially trailed in CPU frequency but overtook Intel in 2005 and showed a generally increasing trend despite some fluctuations. Intel's CPU frequency peaked around 2005, then decreased with minor fluctuations. NVIDIA's GPU frequency consistently rose until 2015, then fluctuated but still trended upward. AMD joined the GPU market later but soon outperformed Intel and challenged NVIDIA. Intel's GPU frequencies, though increasing, stayed below those of its competitors. For CPU transistor density, AMD saw significant variations, peaking around 2005 and 2019 with an overall upward trend. Intel experienced a steady rise with a notable increase in 2016, followed by a slight decline. In GPU transistor density, AMD led by surpassing Intel and eventually NVIDIA in 2020 after a sharp rise from 2015. Intel's GPU density, while improving, lagged behind others. NVIDIA's GPU density started behind Intel but steadily grew, although AMD eventually outpaced it.
+:::
+
+# References
+
+::: {align="justify"}
+-   Tim Dettmers
+
+<https://timdettmers.com/2023/01/30/which-gpu-for-deep-learning/>
+
+-   Ace Cloud
+
+<https://www.acecloudhosting.com/blog/gpu-vs-cpu-for-data-analytics-tasks/#GPU_Vs_CPU_for_Data_Analytics_Which_One_is_Best_for_Your_Needs>
+
+-   AnandTech
+
+<https://www.anandtech.com/show/12693/intel-delays-mass-production-of-10-nm-cpus-to-2019>
+
+-   AMD Investor Relations
+
+<https://ir.amd.com/news-events/press-releases/detail/746/amd-reports-fourth-quarter-and-annual-2016-financial-results>
+:::
