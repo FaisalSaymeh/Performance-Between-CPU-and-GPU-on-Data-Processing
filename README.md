@@ -1,7 +1,6 @@
+# Performance Analysis Between CPU and GPU for Machine Learning
 
-Performance Analysis Between CPU and GPU for Machine Learning
-
-Introduction
+## Introduction
 
 In the realm of machine learning, the selection of appropriate hardware plays a pivotal role in attaining peak performance and efficiency. Among the primary computing devices utilized for machine learning tasks, GPUs and CPUs stand out, each showcasing distinct strengths and weaknesses.
 
@@ -12,7 +11,7 @@ About The Dataset
 
 This dataset contains 2,185 CPUs and 2,668 GPUs to understand the development trend of CPUs and GPUs and their performance. It encompasses a diverse set of benchmarks and metrics like process size, thermal design power(TDP), die size, number of transistors, and frequency to evaluate the performance of these two types of processors. In addition, the release date and the manufacturer to see the evolution of these processors’ performance during these years.
 
-Important Terminology:
+## Important Terminology:
 
   - Process Size (nm): the size of the transistors used in a processor. The size plays a significant role and typically enables a greater number of transistors to be accommodated within the same physical area (Die Area), potentially leading to enhanced performance, decreased power consumption, and reduced production expenses(nm is an acronym for Nano-meter. It is used to measure microscopic objects or devices like transistors found in processors or atomic structures).
 
