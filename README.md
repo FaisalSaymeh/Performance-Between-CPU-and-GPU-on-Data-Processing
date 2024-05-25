@@ -7,7 +7,8 @@ In the realm of machine learning, the selection of appropriate hardware plays a 
 Traditionally, CPUs or central processing units have held the preference owing to their versatility and adeptness in multitasking. CPU acts as the computer’s brain, executing fundamental instructions such as arithmetic, logic operations, and I/O tasks. On the other hand, a GPU, or graphics processing unit, designed originally for 2D and 3D graphics and specialized in rendering for high-resolution graphics, but these days with the surge in big data and machine learning applications has propelled GPUs into the spotlight, given their capacity to manage extensive datasets and execute parallel computations.
 
 This project aims to delve into the variances between GPU and CPU performance by delving into the specifications of the processors, to determine which company and which processors of CPU or GPU provide superior power for machine learning.
-About The Dataset
+
+## About The Dataset
 
 This dataset contains 2,185 CPUs and 2,668 GPUs to understand the development trend of CPUs and GPUs and their performance. It encompasses a diverse set of benchmarks and metrics like process size, thermal design power(TDP), die size, number of transistors, and frequency to evaluate the performance of these two types of processors. In addition, the release date and the manufacturer to see the evolution of these processors’ performance during these years.
 
